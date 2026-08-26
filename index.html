@@ -221,11 +221,11 @@
 <section>
   <p class="eyebrow">01 &mdash;</p>
   <h2>Your identity</h2>
-  <p class="hint">Create a key once, then keep the file. Losing it means losing the identity — there is no recovery and no reset. If you already have a <code>key.json</code>, load it here instead.</p>
+  <p class="hint"><strong>Already have a <code>key.json</code>? Load it.</strong> Creating a key makes a different identity, and the DID you already published will not match it. Create one only the first time &mdash; then keep the file, because losing it means losing the identity, with no recovery and no reset.</p>
 
   <div class="btnrow">
-    <button class="primary" id="btn-gen">Create a new key</button>
-    <button id="btn-load">Load key.json</button>
+    <button id="btn-load">Load key.json &mdash; I already have one</button>
+    <button id="btn-gen">Create a new key &mdash; first time</button>
     <input type="file" id="file" accept=".json,application/json" hidden>
   </div>
 
@@ -234,6 +234,7 @@
       <dt>DID</dt><dd id="v-did"></dd>
       <dt>Fingerprint</dt><dd id="v-fp"></dd>
       <dt>Note key</dt><dd id="v-notekey"></dd>
+      <dt>Source</dt><dd id="v-origin"></dd>
     </dl>
     <div class="btnrow" style="margin-top:16px">
       <button class="danger" id="btn-save">Download key.json</button>
@@ -500,7 +501,7 @@ async function publicFromDid(did){
 }
 
 /* ---------- key handling ---------- */
-async function adoptSeed(seed){
+async function adoptSeed(seed, fresh){
   const pkcs8 = new Uint8Array(PKCS8_PREFIX.length + 32);
   pkcs8.set(PKCS8_PREFIX, 0); pkcs8.set(seed, PKCS8_PREFIX.length);
   const priv = await crypto.subtle.importKey("pkcs8", pkcs8, {name:"Ed25519"}, true, ["sign"]);
@@ -508,7 +509,7 @@ async function adoptSeed(seed){
   state.seed = seed; state.priv = priv;
   state.did = await didFromPublic(pub);
   state.fp = await fingerprint(state.did);
-  paintIdentity();
+  paintIdentity(fresh);
 }
 /* The public half is derived from the seed by the curve, so we never store it:
    import the seed, export it as a JWK, and read the "x" member WebCrypto computed. */
@@ -520,10 +521,11 @@ async function publicFromSeed(seed){
   return unb64url(jwk.x);
 }
 
-function paintIdentity(){
+function paintIdentity(fresh){
   $("v-did").textContent = state.did;
   $("v-fp").textContent = state.fp;
   $("v-notekey").textContent = "/kv/" + notePath(state.fp);
+  $("v-origin").textContent = fresh ? "newly created — not yet saved to disk" : "loaded from key.json";
   $("idcard").classList.add("on");
   $("btn-sign").disabled = false;
   $("btn-contrib").disabled = false;
@@ -704,9 +706,10 @@ function copy(text, btn){
 
   $("btn-gen").addEventListener("click", async () => {
     if (state.did && !confirm("Replace the key currently loaded? If you have not downloaded it, it is gone.")) return;
+    if (!state.did && !confirm("Create a brand new identity?\n\nIf you already have a key.json from this tool or from technocore.py, press Cancel and use \"Load key.json\" instead — a new key is a different DID and will not match anything you have already published.")) return;
     const kp = await crypto.subtle.generateKey({name:"Ed25519"}, true, ["sign","verify"]);
     const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
-    await adoptSeed(pkcs8.slice(-32));
+    await adoptSeed(pkcs8.slice(-32), true);
   });
 
   $("btn-load").addEventListener("click", () => $("file").click());
@@ -716,7 +719,7 @@ function copy(text, btn){
     try{
       const data = JSON.parse(await f.text());
       if (!/^[0-9a-fA-F]{64}$/.test(data.seed_hex || "")) throw new Error("no 64-character seed_hex field");
-      await adoptSeed(unhex(data.seed_hex.toLowerCase()));
+      await adoptSeed(unhex(data.seed_hex.toLowerCase()), false);
       if (data.did && data.did !== state.did) alert("Heads up: the DID recorded in the file does not match the one derived from its seed. Trusting the seed.");
     }catch(e){
       alert("That file does not look like a key.json: " + e.message);
