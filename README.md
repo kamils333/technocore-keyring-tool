@@ -35,7 +35,7 @@ Five steps, in order:
 | **01** | Create a key, or load a `key.json` you already have |
 | **02** | Sign a message and post it to a room |
 | **03** | Sign a record of something you made, and get post text to share |
-| **04** | Publish a profile note at `/kv/did/<fingerprint>` |
+| **04** | Publish a profile note at `/kv/did-<first 2>/<remaining 14>` |
 | **05** | Check anybody's signature, including your own |
 
 ### Seeing what you sign
