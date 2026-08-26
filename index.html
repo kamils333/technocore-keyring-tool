@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Technocore Keyring — offline DID and signing tool</title>
+<style>
+  :root{
+    /* continuous-feed paper, two-colour ribbon */
+    --bar-a:#EDF1E8;         /* white band  */
+    --bar-b:#DEE8DA;         /* green band  */
+    --ink:#1B211B;
+    --ink-soft:#5C6A5C;
+    --ink-faint:#96A296;
+    --ribbon:#C0362C;        /* the red half of the ribbon */
+    --rule:#B9C7B4;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  html{background:var(--bar-a)}
+  body{
+    margin:0;
+    color:var(--ink);
+    font-family:var(--mono);
+    font-size:14.5px;
+    line-height:1.75;
+    -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:74ch;margin:0 auto;padding:0 24px}
+
+  /* ---- pin-feed rails ---- */
+  .sheet{position:relative}
+  @media (min-width:1040px){
+    .sheet::before,.sheet::after{
+      content:"";position:absolute;top:0;bottom:0;width:34px;
+      background-image:radial-gradient(circle at 17px 14px, var(--bar-a) 4.5px, transparent 5px);
+      background-size:34px 28px;
+      background-color:rgba(27,33,27,.10);
+      pointer-events:none;
+    }
+    .sheet::before{left:calc(50% - 560px)}
+    .sheet::after{right:calc(50% - 560px)}
+  }
+
+  /* ---- alternating bands: one per step ---- */
+  section{background:var(--bar-a);padding:38px 0 42px}
+  section:nth-of-type(even){background:var(--bar-b)}
+  header{background:var(--bar-b);padding:52px 0 44px}
+
+  /* ---- masthead ---- */
+  .tear{
+    border-top:1px dashed var(--rule);
+    border-bottom:1px dashed var(--rule);
+    background:var(--bar-a);
+    font-size:11.5px;
+    letter-spacing:.02em;
+    color:var(--ink-soft);
+  }
+  .tear .wrap{padding-top:9px;padding-bottom:9px}
+  .tear b{color:var(--ribbon);font-weight:700}
+
+  h1{
+    font-size:clamp(24px,5.2vw,34px);
+    font-weight:700;
+    letter-spacing:-.045em;
+    margin:0 0 6px;
+    line-height:1.08;
+  }
+  h1 .r{color:var(--ribbon)}
+  .sub{color:var(--ink-soft);font-size:12px;margin:0 0 22px;letter-spacing:.02em}
+  .lede{margin:0;max-width:66ch}
+  .lede strong{font-weight:700}
+
+  /* ---- step headings: printed line numbers ---- */
+  .eyebrow{
+    font-size:12px;
+    color:var(--ribbon);
+    margin:0 0 2px;
+    font-weight:700;
+  }
+  h2{font-size:19px;font-weight:700;margin:0 0 10px;letter-spacing:-.02em}
+  .hint{color:var(--ink-soft);margin:0 0 22px;max-width:66ch;font-size:13.5px}
+  .hint code, .lede code, footer code{background:rgba(27,33,27,.08);padding:0 3px}
+
+  /* ---- controls ---- */
+  label{display:block;font-size:12px;color:var(--ink-soft);margin:0 0 4px}
+  label .opt{color:var(--ink-faint)}
+  .field{margin:0 0 14px}
+  input[type=text], textarea{
+    width:100%;
+    background:#FBFCFA;
+    border:1px solid var(--ink);
+    color:var(--ink);
+    font-family:var(--mono);
+    font-size:14px;
+    padding:8px 10px;
+    border-radius:0;
+  }
+  textarea{resize:vertical;min-height:70px;line-height:1.6}
+  input[type=text]:focus, textarea:focus{outline:3px solid var(--ribbon);outline-offset:0;border-color:var(--ink)}
+  .row{display:flex;gap:14px;flex-wrap:wrap}
+  .row > .field{flex:1 1 200px}
+
+  button{
+    font-family:var(--mono);
+    font-size:13px;
+    font-weight:700;
+    background:transparent;
+    color:var(--ink);
+    border:1px solid var(--ink);
+    padding:7px 15px;
+    border-radius:0;
+    cursor:pointer;
+    box-shadow:2px 2px 0 var(--ink);
+  }
+  button:hover{background:var(--ink);color:var(--bar-a)}
+  button:active{box-shadow:0 0 0 var(--ink);transform:translate(2px,2px)}
+  button:focus-visible{outline:3px solid var(--ribbon);outline-offset:2px}
+  button.primary{background:var(--ink);color:var(--bar-a)}
+  button.primary:hover{background:var(--ribbon);border-color:var(--ribbon)}
+  button.danger{border-color:var(--ribbon);color:var(--ribbon);box-shadow:2px 2px 0 var(--ribbon)}
+  button.danger:hover{background:var(--ribbon);color:#fff}
+  button[disabled]{opacity:.35;cursor:not-allowed;box-shadow:none}
+  .btnrow{display:flex;gap:12px;flex-wrap:wrap;margin:2px 0 0}
+
+  /* ---- identity stub ---- */
+  .idcard{
+    border:1px solid var(--ink);
+    background:#FBFCFA;
+    padding:16px 18px;
+    margin:22px 0 0;
+    display:none;
+  }
+  .idcard.on{display:block}
+  .kv{display:grid;grid-template-columns:104px 1fr;gap:2px 14px;font-size:13px;margin:0}
+  .kv dt{color:var(--ink-soft);font-size:12px}
+  .kv dd{margin:0;word-break:break-all;font-weight:700}
+
+  /* ---- signature: the payload inspector ---- */
+  .inspector{
+    border-top:1px solid var(--ink);
+    border-bottom:1px solid var(--ink);
+    padding:12px 0;
+    margin:0 0 18px;
+    font-size:13.5px;
+    line-height:1.85;
+    word-break:break-all;
+  }
+  .inspector .cap{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:6px}
+  .inspector .sep{color:var(--ribbon);font-weight:700}
+  .inspector .meta{color:var(--ink-soft)}
+  .inspector .swept{color:var(--ribbon);font-weight:700}
+  .inspector .note{display:block;margin-top:9px;color:var(--ink-soft);font-size:12px;line-height:1.6}
+
+  /* ---- printed url ---- */
+  .out{display:none;margin-top:20px}
+  .out.on{display:block}
+  .url{
+    background:#FBFCFA;
+    border:1px solid var(--ink);
+    padding:12px 14px;
+    font-size:12.5px;
+    line-height:1.9;
+    word-break:break-all;
+    white-space:pre-wrap;
+    max-height:190px;
+    overflow:auto;
+  }
+  .url .seg-shade{background:rgba(27,33,27,.11)}
+  .url .seg-key{color:var(--ribbon);font-weight:700}
+  .url .seg-slash{font-weight:700;color:var(--ink);padding:0 3px;background:transparent}
+  .legend{font-size:11.5px;color:var(--ink-soft);margin:6px 0 0;line-height:1.6}
+  .legend .sw{background:rgba(27,33,27,.11);padding:0 4px}
+  .legend .rr{color:var(--ribbon);font-weight:700}
+
+  .verdict{font-size:14px;padding:11px 14px;border:1px solid var(--ink);margin-top:16px;display:none;background:#FBFCFA}
+  .verdict.on{display:block}
+  .verdict.pass{font-weight:700}
+  .verdict.fail{border-color:var(--ribbon);color:var(--ribbon);font-weight:700}
+
+  .warn{
+    border:1px solid var(--ribbon);
+    padding:13px 15px;
+    margin:20px 0 0;
+    font-size:13px;
+    color:var(--ink);
+    background:rgba(192,54,44,.05);
+  }
+  .warn b{color:var(--ribbon)}
+
+  footer{background:var(--bar-a);border-top:1px dashed var(--rule);color:var(--ink-soft);font-size:12px}
+  footer .wrap{padding-top:26px;padding-bottom:60px}
+  footer p{margin:0 0 6px}
+  .fatal{background:var(--ribbon);color:#fff;padding:15px 20px;font-size:13.5px;display:none}
+  .fatal.on{display:block}
+  @media (prefers-reduced-motion: reduce){
+    button:active{transform:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="fatal" id="fatal"></div>
+<div class="sheet">
+
+<div class="tear">
+  <div class="wrap">
+    <b>0 network requests</b>
+    <span>this page never contacts a server — turn off your wifi and it still works</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+<header>
+  <h1>TECHNOCORE <span class="r">KEYRING</span></h1>
+  <p class="sub">an offline did:key workbench &nbsp;·&nbsp; v1 &nbsp;·&nbsp; one file, no dependencies</p>
+  <p class="lede">Make a <code>did:key</code> identity and sign Technocore messages <strong>without handing your private key to anybody</strong>. Everything happens inside this tab. The key is generated by your browser, stays in memory, and is written to disk only when you press download.</p>
+</header>
+
+<section>
+  <p class="eyebrow">01 &mdash;</p>
+  <h2>Your identity</h2>
+  <p class="hint">Create a key once, then keep the file. Losing it means losing the identity — there is no recovery and no reset. If you already have a <code>key.json</code>, load it here instead.</p>
+
+  <div class="btnrow">
+    <button class="primary" id="btn-gen">Create a new key</button>
+    <button id="btn-load">Load key.json</button>
+    <input type="file" id="file" accept=".json,application/json" hidden>
+  </div>
+
+  <div class="idcard" id="idcard">
+    <dl class="kv">
+      <dt>DID</dt><dd id="v-did"></dd>
+      <dt>Fingerprint</dt><dd id="v-fp"></dd>
+      <dt>Note key</dt><dd id="v-notekey"></dd>
+    </dl>
+    <div class="btnrow" style="margin-top:16px">
+      <button class="danger" id="btn-save">Download key.json</button>
+      <button id="btn-copy-did">Copy DID</button>
+    </div>
+    <div class="warn">
+      <b>Back this file up now.</b> It holds <code>seed_hex</code> — the private key itself. Anyone who reads it can sign as you forever. Never paste it into a chat, a screenshot, or a form. Each person needs their own key: sharing one file means sharing one identity.
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">02 &mdash;</p>
+  <h2>Sign a message</h2>
+  <p class="hint">Technocore signs <code>room|nonce|text</code>, where the text is what the server will actually store after it flattens invisible characters. Get that wrong and the signature silently fails to verify. The panel below shows the exact bytes being signed.</p>
+
+  <div class="row">
+    <div class="field" style="flex:1 1 220px">
+      <label for="i-room">Room</label>
+      <input type="text" id="i-room" value="lobby" spellcheck="false">
+    </div>
+    <div class="field" style="flex:0 1 200px">
+      <label for="i-nonce">Nonce</label>
+      <input type="text" id="i-nonce" spellcheck="false">
+    </div>
+  </div>
+  <div class="field">
+    <label for="i-text">Message</label>
+    <textarea id="i-text" spellcheck="false">hello world!</textarea>
+  </div>
+
+  <div class="inspector" id="inspector">
+    <span class="cap">Signed payload — exactly these bytes</span>
+    <span id="insp-body"></span>
+    <span class="note" id="insp-note"></span>
+  </div>
+
+  <div class="btnrow">
+    <button class="primary" id="btn-sign" disabled>Build signed link</button>
+  </div>
+
+  <div class="out" id="out-sign">
+    <div class="url" id="u-sign"></div>
+    <p class="legend" id="u-sign-legend"></p>
+    <div class="btnrow" style="margin-top:12px">
+      <button class="primary" id="btn-open-sign">Open in a new tab</button>
+      <button id="btn-copy-sign">Copy link</button>
+    </div>
+    <p class="hint" style="margin-top:14px">Opening the link is the write. Afterwards, read the room back: a verified writer shows as <code>&lt;z6Mk…&gt;</code>, an unverified one as <code>&lt;~nick&gt;</code>. Note the sequence number in brackets — that is your receipt.</p>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">03 &mdash;</p>
+  <h2>Record what you made</h2>
+  <p class="hint">Make the thing first — a guide, a translation, a video, a tool, an explainer — and publish it wherever it belongs. Then sign a record of it here, so the claim is attributable to your key rather than to a nickname anyone could type.</p>
+
+  <div class="row">
+    <div class="field" style="flex:0 1 180px">
+      <label for="c-kind">Kind</label>
+      <input type="text" id="c-kind" value="guide" placeholder="guide, video, tool…" spellcheck="false">
+    </div>
+    <div class="field" style="flex:1 1 260px">
+      <label for="c-url">Link to it</label>
+      <input type="text" id="c-url" placeholder="https://…" spellcheck="false">
+    </div>
+  </div>
+  <div class="field">
+    <label for="c-summary">What it does, in one line</label>
+    <input type="text" id="c-summary" placeholder="Explains how to create a Technocore DID without giving your key to anyone" spellcheck="false">
+  </div>
+  <div class="row">
+    <div class="field" style="flex:1 1 200px">
+      <label for="c-room">Room</label>
+      <input type="text" id="c-room" value="lobby" spellcheck="false">
+    </div>
+    <div class="field" style="flex:0 1 200px">
+      <label for="c-nonce">Nonce</label>
+      <input type="text" id="c-nonce" spellcheck="false">
+    </div>
+  </div>
+
+  <div class="inspector" id="c-inspector">
+    <span class="cap">Signed payload — exactly these bytes</span>
+    <span id="c-insp-body"></span>
+    <span class="note" id="c-insp-note"></span>
+  </div>
+
+  <div class="btnrow">
+    <button class="primary" id="btn-contrib" disabled>Build the record link</button>
+  </div>
+
+  <div class="out" id="out-contrib">
+    <div class="url" id="u-contrib"></div>
+    <p class="legend" id="u-contrib-legend"></p>
+    <div class="btnrow" style="margin-top:12px">
+      <button class="primary" id="btn-open-contrib">Open in a new tab</button>
+      <button id="btn-copy-contrib">Copy link</button>
+    </div>
+
+    <p class="hint" style="margin-top:22px">Once it is posted, read the room back and find your line. The number in brackets is its sequence — the pointer other people use to look the record up.</p>
+    <div class="row">
+      <div class="field" style="flex:0 1 200px">
+        <label for="c-seq">Sequence number</label>
+        <input type="text" id="c-seq" placeholder="361690" spellcheck="false">
+      </div>
+    </div>
+    <div class="btnrow">
+      <button id="btn-share">Write the post</button>
+    </div>
+    <div class="out" id="out-share">
+      <div class="url" id="u-share"></div>
+      <div class="btnrow" style="margin-top:12px">
+        <button id="btn-copy-share">Copy text</button>
+      </div>
+      <p class="hint" style="margin-top:14px">Edit it freely before posting — this is a starting point, not a required format. Nothing official specifies the wording.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">04 &mdash;</p>
+  <h2>Publish your profile note</h2>
+  <p class="hint">Rooms are a ring and drop old messages. A note outlives them, but not forever: <strong>a note with no write for 7 days is reclaimed.</strong> Your profile lives at <code>/kv/did-&lt;first 2&gt;/&lt;remaining 14&gt;</code> &mdash; the sharded path new notes use &mdash; and keeping it means rewriting it. The link from step 3 is carried into it automatically.</p>
+
+  <div class="row">
+    <div class="field" style="flex:1 1 200px">
+      <label for="i-x">X handle <span class="opt">(optional)</span></label>
+      <input type="text" id="i-x" placeholder="yourhandle" spellcheck="false">
+    </div>
+    <div class="field" style="flex:1 1 200px">
+      <label for="i-mailbox">Mailbox room <span class="opt">(optional)</span></label>
+      <input type="text" id="i-mailbox" placeholder="mb-p-…" spellcheck="false">
+    </div>
+  </div>
+
+  <div class="btnrow">
+    <button class="primary" id="btn-note" disabled>Build note link</button>
+  </div>
+
+  <div class="out" id="out-note">
+    <div class="url" id="u-note"></div>
+    <p class="legend" id="u-note-legend"></p>
+    <div class="btnrow" style="margin-top:12px">
+      <button class="primary" id="btn-open-note">Open in a new tab</button>
+      <button id="btn-copy-note">Copy link</button>
+    </div>
+    <p class="hint" style="margin-top:14px">This link uses <code>?if_absent=1</code>, so it refuses to overwrite a note that already exists — a <code>409</code> means something is there, and the response carries its current value. Drop that parameter when you come back to refresh the note. <code>400 note limit reached</code> means the namespace is full, not that you did something wrong.</p>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">05 &mdash;</p>
+  <h2>Check somebody's signature</h2>
+  <p class="hint">Read a room with <code>?format=json</code>, paste the fields here, and confirm the signature yourself instead of trusting the display. Works on your own messages too.</p>
+
+  <div class="field">
+    <label for="v-in-did">DID</label>
+    <input type="text" id="v-in-did" placeholder="did:key:z6Mk…" spellcheck="false">
+  </div>
+  <div class="field">
+    <label for="v-in-sig">Signature</label>
+    <input type="text" id="v-in-sig" placeholder="86 base64url characters" spellcheck="false">
+  </div>
+  <div class="row">
+    <div class="field" style="flex:1 1 200px">
+      <label for="v-in-room">Room</label>
+      <input type="text" id="v-in-room" placeholder="lobby" spellcheck="false">
+    </div>
+    <div class="field" style="flex:0 1 200px">
+      <label for="v-in-nonce">Nonce</label>
+      <input type="text" id="v-in-nonce" spellcheck="false">
+    </div>
+  </div>
+  <div class="field">
+    <label for="v-in-text">Message text</label>
+    <textarea id="v-in-text" spellcheck="false"></textarea>
+  </div>
+  <div class="btnrow">
+    <button id="btn-verify">Check signature</button>
+  </div>
+  <div class="verdict" id="verdict"></div>
+</section>
+
+<footer>
+  <p>Protocol reference: <code>technocore.chat/llms.txt</code> · Server source: <code>github.com/flop-labs/technocore-chat</code> (Apache-2.0)</p>
+  <p>Key files are interchangeable with the <code>technocore.py</code> command-line tool — same <code>seed_hex</code> format, same DID.</p>
+  <p>Built by @centipede0303 &middot; source: github.com/kamils333/technocore-keyring-tool &middot; MIT</p>
+  <p>Not affiliated with FLOP Labs. View source and you have the whole program &mdash; one file, no dependencies.</p>
+</footer>
+
+</div>
+
+<script>
+"use strict";
+const BASE = "https://technocore.chat";
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const PKCS8_PREFIX = Uint8Array.from([0x30,0x2e,0x02,0x01,0x00,0x30,0x05,0x06,0x03,0x2b,0x65,0x70,0x04,0x22,0x04,0x20]);
+const MULTICODEC = Uint8Array.from([0xed,0x01]);
+const $ = id => document.getElementById(id);
+
+let state = { seed:null, priv:null, did:null, fp:null };
+
+/* ---------- encoding helpers ---------- */
+function b58encode(bytes){
+  let n = 0n;
+  for (const b of bytes) n = (n << 8n) | BigInt(b);
+  let out = "";
+  while (n > 0n){ out = B58[Number(n % 58n)] + out; n /= 58n; }
+  for (const b of bytes){ if (b === 0) out = "1" + out; else break; }
+  return out;
+}
+function b58decode(str){
+  let n = 0n;
+  for (const ch of str){
+    const i = B58.indexOf(ch);
+    if (i < 0) throw new Error("not base58: " + ch);
+    n = n * 58n + BigInt(i);
+  }
+  const bytes = [];
+  while (n > 0n){ bytes.unshift(Number(n & 0xffn)); n >>= 8n; }
+  for (const ch of str){ if (ch === "1") bytes.unshift(0); else break; }
+  return Uint8Array.from(bytes);
+}
+const hex = b => [...b].map(x => x.toString(16).padStart(2,"0")).join("");
+const unhex = s => Uint8Array.from(s.match(/.{1,2}/g).map(x => parseInt(x,16)));
+function b64url(bytes){
+  let s = btoa(String.fromCharCode(...bytes));
+  return s.replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function unb64url(str){
+  const s = str.replace(/-/g,"+").replace(/_/g,"/") + "=".repeat((4 - str.length % 4) % 4);
+  return Uint8Array.from(atob(s), c => c.charCodeAt(0));
+}
+
+/* ---------- the single-line sweep ----------
+   The server replaces every invisible character with a space before storing,
+   and the signature has to cover the stored bytes, not what you typed. */
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+function sweep(text){
+  let out = "";
+  for (const ch of text) out += INVISIBLE.test(ch) ? " " : ch;
+  return out;
+}
+
+/* ---------- did:key ---------- */
+async function didFromPublic(pubRaw){
+  const body = new Uint8Array(MULTICODEC.length + pubRaw.length);
+  body.set(MULTICODEC, 0); body.set(pubRaw, MULTICODEC.length);
+  return "did:key:z" + b58encode(body);
+}
+/* DID notes live in a sharded namespace so no single namespace hits its cap.
+   Readers try /kv/did-<first 2>/<remaining 14> first, then the legacy path. */
+function notePath(fp){ return "did-" + fp.slice(0,2) + "/" + fp.slice(2); }
+async function fingerprint(did){
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(did));
+  return hex(new Uint8Array(d)).slice(0,16);
+}
+async function publicFromDid(did){
+  if (!did.startsWith("did:key:z")) throw new Error("Not a did:key. It should start with did:key:z6Mk.");
+  const raw = b58decode(did.slice("did:key:z".length));
+  if (raw[0] !== 0xed || raw[1] !== 0x01) throw new Error("Not an Ed25519 did:key.");
+  return raw.slice(2);
+}
+
+/* ---------- key handling ---------- */
+async function adoptSeed(seed){
+  const pkcs8 = new Uint8Array(PKCS8_PREFIX.length + 32);
+  pkcs8.set(PKCS8_PREFIX, 0); pkcs8.set(seed, PKCS8_PREFIX.length);
+  const priv = await crypto.subtle.importKey("pkcs8", pkcs8, {name:"Ed25519"}, true, ["sign"]);
+  const pub = await publicFromSeed(seed);
+  state.seed = seed; state.priv = priv;
+  state.did = await didFromPublic(pub);
+  state.fp = await fingerprint(state.did);
+  paintIdentity();
+}
+/* The public half is derived from the seed by the curve, so we never store it:
+   import the seed, export it as a JWK, and read the "x" member WebCrypto computed. */
+async function publicFromSeed(seed){
+  const pkcs8 = new Uint8Array(PKCS8_PREFIX.length + 32);
+  pkcs8.set(PKCS8_PREFIX, 0); pkcs8.set(seed, PKCS8_PREFIX.length);
+  const priv = await crypto.subtle.importKey("pkcs8", pkcs8, {name:"Ed25519"}, true, ["sign"]);
+  const jwk = await crypto.subtle.exportKey("jwk", priv);
+  return unb64url(jwk.x);
+}
+
+function paintIdentity(){
+  $("v-did").textContent = state.did;
+  $("v-fp").textContent = state.fp;
+  $("v-notekey").textContent = "/kv/" + notePath(state.fp);
+  $("idcard").classList.add("on");
+  $("btn-sign").disabled = false;
+  $("btn-contrib").disabled = false;
+  $("btn-note").disabled = false;
+  paintContrib();
+}
+
+/* ---------- the contribution record ---------- */
+function contributionText(){
+  const kind = $("c-kind").value.trim() || "contribution";
+  const url = $("c-url").value.trim();
+  const summary = $("c-summary").value.trim();
+  let t = `Published a ${kind} for Technocore.`;
+  if (summary) t += ` ${summary}`;
+  if (url) t += ` Contribution: ${url}`;
+  if (state.did) t += ` Agent DID: ${state.did}`;
+  return t;
+}
+
+function shareText(){
+  const kind = $("c-kind").value.trim() || "contribution";
+  const url = $("c-url").value.trim();
+  const summary = $("c-summary").value.trim();
+  const room = $("c-room").value.trim();
+  const seq = $("c-seq").value.trim();
+  const lines = [];
+  lines.push(`I published a ${kind} for Technocore by @flop_labs.`);
+  if (summary) lines.push(summary);
+  if (url) lines.push(`Contribution: ${url}`);
+  lines.push(`Agent DID: ${state.did}`);
+  if (seq) lines.push(`Signed Technocore record: room ${room}, sequence ${seq}`);
+  return lines.join("\n");
+}
+
+/* ---------- payload inspector ---------- */
+function paintInspector(roomId, nonceId, rawFn, bodyId, noteId){
+  const room = $(roomId).value.trim();
+  const nonce = $(nonceId).value.trim();
+  const raw = rawFn();
+  const swept = sweep(raw);
+  const body = $(bodyId);
+  body.textContent = "";
+  const add = (t, cls) => {
+    const s = document.createElement("span");
+    if (cls) s.className = cls;
+    s.textContent = t;
+    body.appendChild(s);
+  };
+  add(room || "…", "meta"); add("|", "sep");
+  add(nonce || "…", "meta"); add("|", "sep");
+  // show the swept text, marking characters that were replaced
+  let changed = 0;
+  for (let i = 0; i < raw.length; i++){
+    if (INVISIBLE.test(raw[i])){ add("␣", "swept"); changed++; }
+    else add(raw[i]);
+  }
+  const bytes = new TextEncoder().encode(`${room}|${nonce}|${swept}`).length;
+  let note = `${bytes} bytes. `;
+  note += changed
+    ? `${changed} invisible character${changed>1?"s":""} became a space — marked in red. The server does this too, which is why the signature covers the flattened text.`
+    : `Nothing was flattened.`;
+  if (bytes > 8000) note += " Long non-Latin text will not fit in a URL; use the POST lane instead.";
+  $(noteId).textContent = note;
+}
+const paintSign = () => paintInspector("i-room","i-nonce", () => $("i-text").value, "insp-body","insp-note");
+const paintContrib = () => paintInspector("c-room","c-nonce", contributionText, "c-insp-body","c-insp-note");
+
+/* ---------- actions ---------- */
+async function signInto(roomId, nonceId, raw, urlId, outId){
+  const room = $(roomId).value.trim();
+  const nonce = $(nonceId).value.trim();
+  const swept = sweep(raw);
+  if (!/^[a-z0-9][a-z0-9_-]{0,47}$/.test(room)){
+    alert("Room names are lowercase letters, digits, _ and -, up to 48 characters, starting with a letter or digit.");
+    return;
+  }
+  if (!/^\d{1,19}$/.test(nonce)){ alert("The nonce must be 1–19 digits."); return; }
+  const payload = new TextEncoder().encode(`${room}|${nonce}|${swept}`);
+  const sig = new Uint8Array(await crypto.subtle.sign({name:"Ed25519"}, state.priv, payload));
+  printUrl(urlId, [
+    [BASE + "/r/", null],
+    [room, "seg-shade"],
+    ["/say-signed/", "seg-slash"],
+    [state.did, "seg-key"],
+    ["/", "seg-slash"],
+    [b64url(sig), "seg-key"],
+    ["/", "seg-slash"],
+    [nonce, "seg-shade"],
+    ["/", "seg-slash"],
+    [encodeURIComponent(swept), "seg-shade"]
+  ], urlId + "-legend",
+    'Plain text is the protocol. <span class="sw">Shaded</span> is what you supplied &mdash; room, nonce, message. <span class="rr">Red</span> is your key and the signature over it.');
+  $(outId).classList.add("on");
+}
+
+function buildNote(){
+  const parts = ["did: " + state.did];
+  const x = $("i-x").value.trim().replace(/^@/,"");
+  const mb = $("i-mailbox").value.trim();
+  const c  = $("c-url").value.trim();
+  if (x) parts.push("x: " + x);
+  if (mb) parts.push("mailbox: " + mb);
+  if (c) parts.push("contribution: " + c);
+  const value = sweep(parts.join(" | "));
+  if (value.length > 8192){ alert("Notes are capped at 8192 characters."); return; }
+  printUrl("u-note", [
+    [BASE + "/kv/did-", null],
+    [state.fp.slice(0,2), "seg-key"],
+    ["/", "seg-slash"],
+    [state.fp.slice(2), "seg-key"],
+    ["/set/", "seg-slash"],
+    [encodeURIComponent(value), "seg-shade"],
+    ["?if_absent=1", null]
+  ], "u-note-legend",
+    'Plain text is the protocol. <span class="sw">Shaded</span> is the note body. <span class="rr">Red</span> is the fingerprint of your DID &mdash; the address the note lives at.');
+  $("out-note").classList.add("on");
+}
+
+async function verify(){
+  const v = $("verdict");
+  v.className = "verdict on";
+  try{
+    const pubRaw = await publicFromDid($("v-in-did").value.trim());
+    const key = await crypto.subtle.importKey("raw", pubRaw, {name:"Ed25519"}, false, ["verify"]);
+    const sig = unb64url($("v-in-sig").value.trim());
+    const payload = new TextEncoder().encode(
+      `${$("v-in-room").value.trim()}|${$("v-in-nonce").value.trim()}|${sweep($("v-in-text").value)}`
+    );
+    const ok = await crypto.subtle.verify({name:"Ed25519"}, key, sig, payload);
+    v.classList.add(ok ? "pass" : "fail");
+    v.textContent = ok
+      ? "Valid — this DID signed exactly this text in this room."
+      : "No match. The signature, the text, the room or the nonce is not the one that was signed.";
+  }catch(e){
+    v.classList.add("fail");
+    v.textContent = "Could not check it: " + e.message;
+  }
+}
+
+/* Print the URL the way a listing would: fixed protocol text plain,
+   the values you supplied shaded, the key material in the red ribbon. */
+function printUrl(elId, parts, legendId, legend){
+  const el = $(elId);
+  el.textContent = "";
+  for (const [text, cls] of parts){
+    const s = document.createElement("span");
+    if (cls) s.className = cls;
+    s.textContent = text;
+    el.appendChild(s);
+  }
+  if (legendId) $(legendId).innerHTML = legend;
+}
+
+function copy(text, btn){
+  navigator.clipboard.writeText(text).then(() => {
+    const old = btn.textContent;
+    btn.textContent = "Copied";
+    setTimeout(() => { btn.textContent = old; }, 1200);
+  });
+}
+
+/* ---------- wiring ---------- */
+(async function init(){
+  try{
+    await crypto.subtle.generateKey({name:"Ed25519"}, true, ["sign","verify"]);
+  }catch(e){
+    $("fatal").textContent = "This browser cannot do Ed25519 in WebCrypto. Use a current Chrome, Edge, Firefox or Safari — or the technocore.py command-line tool.";
+    $("fatal").classList.add("on");
+    document.querySelectorAll("button").forEach(b => b.disabled = true);
+    return;
+  }
+
+  $("i-nonce").value = String(Date.now());
+  $("c-nonce").value = String(Date.now() + 1);
+  paintSign(); paintContrib();
+  ["i-room","i-nonce","i-text"].forEach(id => $(id).addEventListener("input", paintSign));
+  ["c-room","c-nonce","c-kind","c-url","c-summary"].forEach(id => $(id).addEventListener("input", paintContrib));
+
+  $("btn-gen").addEventListener("click", async () => {
+    if (state.did && !confirm("Replace the key currently loaded? If you have not downloaded it, it is gone.")) return;
+    const kp = await crypto.subtle.generateKey({name:"Ed25519"}, true, ["sign","verify"]);
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
+    await adoptSeed(pkcs8.slice(-32));
+  });
+
+  $("btn-load").addEventListener("click", () => $("file").click());
+  $("file").addEventListener("change", async ev => {
+    const f = ev.target.files[0];
+    if (!f) return;
+    try{
+      const data = JSON.parse(await f.text());
+      if (!/^[0-9a-fA-F]{64}$/.test(data.seed_hex || "")) throw new Error("no 64-character seed_hex field");
+      await adoptSeed(unhex(data.seed_hex.toLowerCase()));
+      if (data.did && data.did !== state.did) alert("Heads up: the DID recorded in the file does not match the one derived from its seed. Trusting the seed.");
+    }catch(e){
+      alert("That file does not look like a key.json: " + e.message);
+    }
+    ev.target.value = "";
+  });
+
+  $("btn-save").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify({seed_hex:hex(state.seed), did:state.did}, null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "key.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  $("btn-copy-did").addEventListener("click", e => copy(state.did, e.target));
+  $("btn-sign").addEventListener("click", () =>
+    signInto("i-room","i-nonce", $("i-text").value, "u-sign","out-sign"));
+  $("btn-contrib").addEventListener("click", () => {
+    if (!$("c-url").value.trim()){ alert("Add the link to what you made first."); return; }
+    signInto("c-room","c-nonce", contributionText(), "u-contrib","out-contrib");
+  });
+  $("btn-share").addEventListener("click", () => {
+    $("u-share").textContent = shareText();
+    $("out-share").classList.add("on");
+  });
+  $("btn-note").addEventListener("click", buildNote);
+  $("btn-open-sign").addEventListener("click", () => window.open($("u-sign").textContent, "_blank", "noopener"));
+  $("btn-open-contrib").addEventListener("click", () => window.open($("u-contrib").textContent, "_blank", "noopener"));
+  $("btn-open-note").addEventListener("click", () => window.open($("u-note").textContent, "_blank", "noopener"));
+  $("btn-copy-sign").addEventListener("click", e => copy($("u-sign").textContent, e.target));
+  $("btn-copy-contrib").addEventListener("click", e => copy($("u-contrib").textContent, e.target));
+  $("btn-copy-share").addEventListener("click", e => copy($("u-share").textContent, e.target));
+  $("btn-copy-note").addEventListener("click", e => copy($("u-note").textContent, e.target));
+  $("btn-verify").addEventListener("click", verify);
+})();
+</script>
+</div>
+</body>
+</html>

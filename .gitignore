@@ -1,0 +1,4 @@
+# Never commit an identity.
+key.json
+*.key.json
+keys/
